@@ -1,0 +1,6 @@
+language core;
+
+// a constant function, specialized to Nat
+fn Nat2Nat::const(f : fn(Nat) -> Nat) -> (fn(Nat) -> (fn(Nat) -> Nat)) {
+  return fn(x : Nat) { return f; };
+}
