@@ -1,0 +1,5 @@
+language core;
+
+fn a(n : Nat) -> Bool {
+  return n;
+}

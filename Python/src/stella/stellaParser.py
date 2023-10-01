@@ -5122,6 +5122,9 @@ class stellaParser(Parser):
 
     class TypeBoolContext(StellatypeContext):
 
+        def __repr__(self):
+            return 'Bool'
+
         def __init__(self, parser, ctx: ParserRuleContext):  # actually a stellaParser.StellatypeContext
             super().__init__(parser)
             self.copyFrom(ctx)
