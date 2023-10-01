@@ -1,14 +1,28 @@
 import sys
-
 import antlr4.Token
 from antlr4 import *
 from stella.stellaParser import stellaParser
 from stella.stellaLexer import stellaLexer
 
 
+def highlight_error(
+        file_name: str,
+        line: int,
+        column: int,
+):
+    with open(file_name, 'r') as file:
+
+        error_string = None
+
+        for _ in range(line):
+            error_string = file.readline()
+
+        return error_string + '\n' + ' ' * column + '^'
+
+
 class Handler:
 
-    def __init__(self):
+    def __init__(self, file_name: str):
 
         self.variables = {
             '0': 'Nat',
@@ -18,6 +32,8 @@ class Handler:
         }
 
         self.functions = {}
+
+        self.file_name = file_name
 
     def handle_expr_context(
             self,
@@ -32,17 +48,21 @@ class Handler:
         """
 
         if isinstance(ctx, stellaParser.VarContext):
+            """
+            ---
+            """
 
             actual_type = variables[ctx.name.text].__repr__()
             expected_type = ctx_type.__repr__()
 
             if not expected_type == actual_type:
                 raise RuntimeError(f'[TYPE ERROR] At {ctx.name.line}:{ctx.name.column} - expected type: '
-                                   f'{expected_type}, actual type: {actual_type}')
+                                   f'{expected_type}, actual type: {actual_type}\n'
+                                   f'{highlight_error(self.file_name, ctx.name.line, ctx.name.column)}')
 
         elif isinstance(ctx, stellaParser.SequenceContext):
             """
-            ...
+            ---
             """
             return self.handle_expr_context(
                 ctx=ctx.expr1,
@@ -101,7 +121,6 @@ class Handler:
                 print(type_error)
 
 
-
 def main():
 
     from os import listdir
@@ -127,8 +146,12 @@ def main():
         parser = stellaParser(stream)
 
         program = parser.program()
-        handler = Handler()
-        handler.handle_program_context(program)
+        handler = Handler(
+            file_name=file,
+        )
+        handler.handle_program_context(
+            ctx=program,
+        )
 
 
 if __name__ == '__main__':
