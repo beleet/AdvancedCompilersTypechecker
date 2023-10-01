@@ -1,5 +1,5 @@
 language core;
 
-fn a(n : Nat) -> Nat {
-  return n;
+fn a(n : Nat) -> Bool {
+  return succ(n);
 }

@@ -60,6 +60,17 @@ class Handler:
                                    f'{expected_type}, actual type: {actual_type}\n'
                                    f'{highlight_error(self.file_name, ctx.name.line, ctx.name.column)}')
 
+        elif isinstance(ctx, stellaParser.SuccContext):
+            """
+            ---
+            """
+
+            self.handle_expr_context(
+                ctx=ctx.n,
+                ctx_type=ctx_type,
+                variables=variables,
+            )
+
         elif isinstance(ctx, stellaParser.SequenceContext):
             """
             ---
