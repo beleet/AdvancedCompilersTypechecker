@@ -32,15 +32,18 @@ class Handler:
         passes: stellaParser.DeclContext instance.
         returns nothing if typecheck is successfully passed, raises corresponding log message otherwise.
         """
+        print(vars(ctx))
         pass
 
     def handle_program_context(self, ctx: stellaParser.ProgramContext):
         """
-        handles program context.
-        passes: stellaParser.ProgramContext instance.
+        handles program context
+        iterates through ctx.decl to typecheck every declaration
+        passes: stellaParser.ProgramContext instance
         """
 
-        pass
+        for declaration in ctx.decls:
+            self.handle_decl_context(declaration)
 
 
 def main():
@@ -54,7 +57,10 @@ def main():
     well_files = [f'{well_path}\\{f}' for f in listdir(well_path) if isfile(join(well_path, f))]
     ill_files = [f'{ill_path}\\applying-non-function-1.stella']
 
-    for file in well_files + ill_files:
+    # files = well_files + ill_files
+    files = [f'{well_path}\\factorial.stella']
+
+    for file in files:
 
         print(f'---------------{file.replace(well_path, "").replace(ill_path, "")}---------------')
 
