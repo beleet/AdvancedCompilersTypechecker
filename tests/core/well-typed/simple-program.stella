@@ -1,5 +1,14 @@
 language core;
 
-fn a(n : Nat) -> Bool {
-  return succ(n);
+// a constant function, specialized to Nat
+fn Nat2Nat::const(f : fn(Nat) -> Nat) -> (fn(Nat) -> (fn(Nat) -> Nat)) {
+  return fn(x : Nat) { return f; };
+}
+
+// addition of natural numbers
+fn Nat::add(n : Nat) -> (fn(Nat) -> Nat) {
+  return fn(m : Nat) {
+    return Nat::rec(n, m, fn(i : Nat) {
+      return fn(r : Nat) { return succ(r); }; });
+  };
 }
