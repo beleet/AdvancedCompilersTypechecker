@@ -3,6 +3,7 @@ import antlr4.Token
 from antlr4 import *
 from stella.stellaParser import stellaParser
 from stella.stellaLexer import stellaLexer
+import logging
 
 
 def highlight_error(
@@ -18,6 +19,18 @@ def highlight_error(
             error_string = file.readline()
 
         return error_string + '\n' + ' ' * column + '^'
+
+
+def repr_functional_type(ctx) -> str:
+
+    def represent(fun_ctx):
+        if not isinstance(fun_ctx, stellaParser.TypeFunContext):
+            return f'{fun_ctx.__repr__()}'
+
+        else:
+            return f'(fn({fun_ctx.paramTypes[0].__repr__()})->{represent(fun_ctx.returnType)})'
+
+    return represent(ctx)[1:-1]
 
 
 class Handler:
@@ -57,7 +70,7 @@ class Handler:
             except AttributeError:
                 pass
 
-            actual_type = variables[ctx.name.text].getText()
+            actual_type = variables[ctx.name.text]['return_type'].getText()
             expected_type = ctx_type.getText()
 
             if not expected_type == actual_type:
@@ -96,8 +109,6 @@ class Handler:
                 ctx_type = ctx_type.type_
             except AttributeError:
                 pass
-            #
-            # print(ctx_type.getText(), ctx.getText())
 
             ctx_type_param = ctx_type.paramTypes[0].getText()
             abstraction_param_type = ctx.paramDecls[0].paramType.getText()
@@ -111,7 +122,9 @@ class Handler:
                 )
 
             variables.update({
-                ctx.paramDecls[0].name.text: ctx.paramDecls[0].paramType,
+                ctx.paramDecls[0].name.text: {
+                    'return_type': ctx.paramDecls[0].paramType,
+                },
             })
 
             self.handle_expr_context(
@@ -125,67 +138,89 @@ class Handler:
             ---
             """
 
-            application_function = ctx.fun.getText()
+            application_function = ctx.fun.getText().split('(')[0]
+
+            try:
+                ctx_type = ctx_type.type_
+            except AttributeError:
+                pass
+
+            try:
+                self.functions[application_function]['param_type'] = (
+                    self.functions[application_function]['param_type'].type_)
+            except AttributeError:
+                self.functions[application_function]['return_type'] = (
+                    self.functions[application_function]['return_type'].type_)
+
             expected_application_param_type = self.functions[application_function]['param_type'].getText()
             expected_application_return_type = self.functions[application_function]['return_type'].getText()
 
-            application_param_name = ctx.args[0].getText()
-            actual_application_param_type = variables[application_param_name].getText()
-            actual_application_return_type = ctx_type.getText()
+            try:
+                param = ctx.args[0].fun
+                application_param_name = param.name.text
+            except AttributeError:
+                param = ctx.args[0]
+                application_param_name = param.name.text
+
+            try:
+                variables[application_param_name]['return_type'] = (
+                    variables[application_param_name]['return_type'].type_)
+            except AttributeError:
+                ctx_type = ctx_type.type_
+
+            actual_application_param_type = variables[application_param_name]['return_type'].getText()
+            actual_application_return_type = repr_functional_type(ctx_type)
 
             if not expected_application_param_type == actual_application_param_type:
                 raise RuntimeError(
-                    f'[TYPE ERROR] At {ctx.args[0].name.line}:{ctx.args[0].name.column} - expected parameter type: '
+                    f'[TYPE ERROR] At {param.name.line}:{param.name.column} - expected parameter type: '
                     f'{expected_application_param_type}, actual type: {actual_application_param_type}\n'
-                    f'{highlight_error(self.file_name, ctx.args[0].name.line, ctx.args[0].name.column)}'
+                    f'{highlight_error(self.file_name, param.name.line, param.name.column)}'
                 )
 
             if not expected_application_return_type == actual_application_return_type:
                 raise RuntimeError(
-                    f'[TYPE ERROR] At {ctx.args[0].name.line}:{ctx.args[0].name.column} - expected return type: '
+                    f'[TYPE ERROR] At {param.name.line}:{param.name.column} - expected return type: '
                     f'{expected_application_return_type}, actual type: {actual_application_return_type}\n'
-                    f'{highlight_error(self.file_name, ctx.args[0].name.line, ctx.args[0].name.column)}'
+                    f'{highlight_error(self.file_name, param.name.line, param.name.column)}'
                 )
 
         elif isinstance(ctx, stellaParser.NatRecContext):
 
-            if not variables[ctx.n.name.text].getText() == 'Nat':
+            if not variables[ctx.n.name.text]['return_type'].getText() == 'Nat':
                 raise RuntimeError(
                     f'[TYPE ERROR] At Nat::rec expression {ctx.n.name.line}:{ctx.n.name.column} - expected return type: '
-                    f'Nat, actual type: {variables[ctx.n.name.text].getText()}\n'
+                    f'Nat, actual type: {variables[ctx.n.name.text]["return_type"].getText()}\n'
                     f'{highlight_error(self.file_name, ctx.n.name.line, ctx.n.name.column)}'
                 )
 
-            initial_variable_type = variables[ctx.initial.name.text]
-            expected_step_param_type = initial_variable_type
-            expected_step_return_type = initial_variable_type
+            # TODO: check initial value type
+            # its either VarContext or ConstIntContext
 
-            if not expected_step_param_type.getText() == ctx.step.paramDecls[0].paramType.getText():
-                parameter = ctx.step.paramDecls[0]
-                raise RuntimeError(
-                    f'[TYPE ERROR] At Nat::rec expression {parameter.name.line}:'
-                    f'{parameter.name.column} - expected parameter type: '
-                    f'{expected_step_param_type.getText()}, actual type: {parameter.paramType.getText()}\n'
-                    f'{highlight_error(self.file_name, parameter.name.line, parameter.name.column)}'
-                )
+            initial_type = variables[ctx.initial.getText()]['return_type']
 
-            variables.update({
-                ctx.step.paramDecls[0].name.text: ctx.step.paramDecls[0].paramType,
-            })
-
-            expected_step_type = stellaParser.TypeFunContext(
-                ctx=ctx,
-                parser=initial_variable_type.parser,
+            expected_step_return_expr_type = stellaParser.TypeFunContext(
+                parser=initial_type.parser,
+                ctx=ctx.initial,
             )
 
-            expected_step_type.paramTypes = [expected_step_param_type]
-            expected_step_type.returnType = expected_step_return_type
+            expected_step_return_expr_type.paramTypes = [initial_type]
+            expected_step_return_expr_type.returnType = initial_type
+
+            expected_step_type = stellaParser.TypeFunContext(
+                parser=initial_type.parser,
+                ctx=ctx.initial,
+            )
+
+            expected_step_type.paramTypes = [initial_type]
+            expected_step_type.returnType = expected_step_return_expr_type
 
             self.handle_expr_context(
-                ctx=ctx.step.returnExpr,
+                ctx.step,
                 ctx_type=expected_step_type,
                 variables=variables,
             )
+
 
         else:
             raise RuntimeError(f'{ctx.__class__.__name__} is not implemented')
@@ -209,12 +244,16 @@ class Handler:
                 }
             })
 
+            variables = {
+                parameter.name.text: {'return_type': parameter.paramType} for parameter in ctx.paramDecls
+            }
+
+            variables.update(self.functions)
+
             self.handle_expr_context(
                 ctx=ctx.returnExpr,
                 ctx_type=ctx.returnType,
-                variables={
-                    parameter.name.text: parameter.paramType for parameter in ctx.paramDecls
-                }
+                variables=variables,
             )
 
             # print(ctx.name.text, ctx.paramDecls, ctx.returnType, ctx.returnExpr)
