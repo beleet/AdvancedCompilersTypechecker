@@ -21,7 +21,7 @@ def highlight_error(
         return error_string + '\n' + ' ' * column + '^'
 
 
-def repr_functional_type(ctx) -> str:
+def repr_type(ctx) -> str:
 
     def represent(fun_ctx):
 
@@ -67,6 +67,10 @@ class Handler:
         passes: stellaParser.ExprContext instance.
         """
 
+        # print(ctx.getText(), type(ctx))
+        # print(repr_type(ctx_type))
+        # print('\n')
+
         if isinstance(ctx, stellaParser.VarContext):
             """
             handles variables context
@@ -78,8 +82,8 @@ class Handler:
             except AttributeError:
                 pass
 
-            actual_type = variables[ctx.name.text]['return_type'].getText()
-            expected_type = ctx_type.getText()
+            actual_type = repr_type(variables[ctx.name.text]['return_type'])
+            expected_type = repr_type(ctx_type)
 
             if not expected_type == actual_type:
                 raise RuntimeError(f'[TYPE ERROR] At {ctx.name.line}:{ctx.name.column} - expected variable type: '
@@ -91,9 +95,9 @@ class Handler:
             ---
             """
 
-            if not repr_functional_type(ctx_type) == repr_functional_type(ctx.paramType):
+            if not repr_type(ctx_type) == repr_type(ctx.paramType):
                 raise RuntimeError(f'[TYPE ERROR] At {ctx.name.line}:{ctx.name.column} - expected variable type: '
-                                   f'{repr_functional_type(ctx_type)}, actual type: {repr_functional_type(ctx.paramType)}\n'
+                                   f'{repr_type(ctx_type)}, actual type: {repr_type(ctx.paramType)}\n'
                                    f'{highlight_error(self.file_name, ctx.name.line, ctx.name.column)}')
 
         elif isinstance(ctx, stellaParser.SuccContext):
@@ -149,9 +153,13 @@ class Handler:
             ---
             """
 
+            function_type = variables[ctx.fun.getText().split('(')[0]]
+            # print(f'ABOBA: {ctx.getText()}, {ctx.args[0].getText()}, {ctx.fun.getText()}, {repr_type(ctx_type)}')
+            # print(repr_type(function_type))
+
             self.handle_expr_context(
                 ctx=ctx.args[0],
-                ctx_type=ctx_type,
+                ctx_type=function_type['param_type'],
                 variables=variables,
             )
 
@@ -164,10 +172,10 @@ class Handler:
                     f'{highlight_error(self.file_name, ctx.n.name.line, ctx.n.name.column)}'
                 )
 
-            if not variables[ctx.initial.name.text]['return_type'].getText() == repr_functional_type(ctx_type):
+            if not variables[ctx.initial.name.text]['return_type'].getText() == repr_type(ctx_type):
                 raise RuntimeError(
                     f'[TYPE ERROR] At Nat::rec expression {ctx.initial.name.line}:{ctx.initial.name.column} - expected return type: '
-                    f'{repr_functional_type(ctx_type)}, actual type: {variables[ctx.initial.name.text]["return_type"].getText()}\n'
+                    f'{repr_type(ctx_type)}, actual type: {variables[ctx.initial.name.text]["return_type"].getText()}\n'
                     f'{highlight_error(self.file_name, ctx.initial.name.line, ctx.initial.name.column)}'
                 )
 
@@ -194,7 +202,6 @@ class Handler:
                 ctx_type=expected_step_type,
                 variables=variables,
             )
-
 
         else:
             raise RuntimeError(f'{ctx.__class__.__name__} is not implemented')
