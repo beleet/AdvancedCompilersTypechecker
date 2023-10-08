@@ -1,9 +1,6 @@
-import sys
-import antlr4.Token
 from antlr4 import *
 from stella.stellaParser import stellaParser
 from stella.stellaLexer import stellaLexer
-import logging
 
 
 def highlight_error(
@@ -127,9 +124,11 @@ class Handler:
             ---
             """
 
+            # print(f'ABSTRACTION: {vars(ctx)}')
+
             variables.update({
                 ctx.paramDecls[0].name.text: {
-                    'return_type': ctx.paramDecls[0].paramType
+                    'return_type': ctx.paramDecls[0].paramType,
                 },
             })
 
@@ -153,31 +152,45 @@ class Handler:
             ---
             """
 
+            print(ctx.getText())
+            print(vars(ctx))
+            print(ctx.args[0].getText())
+            print(repr_type(ctx_type))
+            print('\n')
+
             function_type = variables[ctx.fun.getText().split('(')[0]]
+            # print(f'ABOBA: {repr_type(variables[ctx.fun.getText().split("(")[0]]["return_type"])}')
+            # print(repr_type(ctx_type))
             # print(f'ABOBA: {ctx.getText()}, {ctx.args[0].getText()}, {ctx.fun.getText()}, {repr_type(ctx_type)}')
-            # print(repr_type(function_type))
+            # print(repr_type(function_type['param_type']))
 
             self.handle_expr_context(
                 ctx=ctx.args[0],
-                ctx_type=function_type['param_type'],
+                ctx_type=ctx_type,
                 variables=variables,
+            )
+
+            self.handle_expr_context(
+                ctx=ctx.fun,
+                ctx_type=function_type['return_type']
             )
 
         elif isinstance(ctx, stellaParser.NatRecContext):
 
-            if not variables[ctx.n.name.text]['return_type'].getText() == 'Nat':
-                raise RuntimeError(
-                    f'[TYPE ERROR] At Nat::rec expression {ctx.n.name.line}:{ctx.n.name.column} - expected return type: '
-                    f'Nat, actual type: {variables[ctx.n.name.text]["return_type"].getText()}\n'
-                    f'{highlight_error(self.file_name, ctx.n.name.line, ctx.n.name.column)}'
-                )
+            self.handle_expr_context(
+                ctx=ctx.n,
+                ctx_type=stellaParser.TypeNatContext(
+                    ctx=ctx,
+                    parser=ctx.parser,
+                ),
+                variables=variables,
+            )
 
-            if not variables[ctx.initial.name.text]['return_type'].getText() == repr_type(ctx_type):
-                raise RuntimeError(
-                    f'[TYPE ERROR] At Nat::rec expression {ctx.initial.name.line}:{ctx.initial.name.column} - expected return type: '
-                    f'{repr_type(ctx_type)}, actual type: {variables[ctx.initial.name.text]["return_type"].getText()}\n'
-                    f'{highlight_error(self.file_name, ctx.initial.name.line, ctx.initial.name.column)}'
-                )
+            self.handle_expr_context(
+                ctx=ctx.initial,
+                ctx_type=ctx_type,
+                variables=variables,
+            )
 
             initial_type = variables[ctx.initial.getText()]['return_type']
 
@@ -203,6 +216,33 @@ class Handler:
                 variables=variables,
             )
 
+        elif isinstance(ctx, stellaParser.ConstIntContext):
+            if not 'Nat' == repr_type(ctx_type):
+                raise RuntimeError(
+                    f'[TYPE ERROR] {ctx.n.line}:{ctx.n.column} - expected variable type: '
+                    f'{repr_type(ctx_type)}, actual type: Nat\n'
+                    f'{highlight_error(self.file_name, ctx.n.line, ctx.n.column)}'
+                )
+
+        elif isinstance(ctx, stellaParser.ConstTrueContext):
+            if not 'Bool' == repr_type(ctx_type):
+                raise RuntimeError(
+                    f'[TYPE ERROR] {ctx.name.line}:{ctx.name.column} - expected variable type: '
+                    f'{repr_type(ctx_type)}, actual type: Bool\n'
+                    f'{highlight_error(self.file_name, ctx.name.line, ctx.name.column)}'
+                )
+
+        elif isinstance(ctx, stellaParser.ConstFalseContext):
+            if not 'Bool' == repr_type(ctx_type):
+                raise RuntimeError(
+                    f'[TYPE ERROR] {ctx.name.line}:{ctx.name.column} - expected variable type: '
+                    f'{repr_type(ctx_type)}, actual type: Bool\n'
+                    f'{highlight_error(self.file_name, ctx.name.line, ctx.name.column)}'
+                )
+
+        elif isinstance(ctx, stellaParser.IfContext):
+            print(vars(ctx))
+
         else:
             raise RuntimeError(f'{ctx.__class__.__name__} is not implemented')
 
@@ -225,21 +265,56 @@ class Handler:
                 }
             })
 
-            variables = {
-                parameter.name.text: {'return_type': parameter.paramType} for parameter in ctx.paramDecls
-            }
+            variables = {}
+
+            for parameter in ctx.paramDecls:
+                if isinstance(parameter.paramType, stellaParser.TypeFunContext):
+                    variables[parameter.name.text] = {
+                        'return_type': parameter.paramType.returnType,
+                        'param_type': parameter.paramType.paramTypes[0],
+                    }
+                else:
+                    variables[parameter.name.text] = {
+                        'return_type': parameter.paramType
+                    }
 
             variables.update(self.functions)
+            variables.update({
+
+                '0': {
+                    'return_type': stellaParser.TypeNatContext(
+                        ctx=ctx,
+                        parser=ctx.parser,
+                    )
+                },
+
+                '1': {
+                    'return_type': stellaParser.TypeNatContext(
+                        ctx=ctx,
+                        parser=ctx.parser,
+                    )
+                },
+
+                'true': {
+                    'return_type': stellaParser.TypeBoolContext(
+                        ctx=ctx,
+                        parser=ctx.parser,
+                    )
+                },
+
+                'false': {
+                    'return_type': stellaParser.TypeBoolContext(
+                        ctx=ctx,
+                        parser=ctx.parser,
+                    )
+                },
+            })
 
             self.handle_expr_context(
                 ctx=ctx.returnExpr,
                 ctx_type=ctx.returnType,
                 variables=variables,
             )
-
-            # print(ctx.name.text, ctx.paramDecls, ctx.returnType, ctx.returnExpr)
-            # print({parameter.name.text: parameter.paramType for parameter in ctx.paramDecls})
-            # print('\n')
 
     def handle_program_context(
             self,
