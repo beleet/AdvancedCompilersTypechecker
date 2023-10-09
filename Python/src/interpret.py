@@ -22,17 +22,14 @@ def compare_types(expected: str, actual: str):
 class Handler:
 
     def __init__(self):
-        self.variables = {
-            '0': 'Nat',
-            '1': 'Nat',
-            'true': 'Bool',
-            'false': 'Bool',
-        }
-        self.functions = {}
+        self.variables = {'0': 'Nat', '1': 'Nat', 'true': 'Bool', 'false': 'Bool'}
+        self.functions = {'iszero': {'param_type': 'Nat', 'return_type': 'Bool'}}
 
     def handle_expr_context(
             self,
             ctx: stellaParser.ExprContext,
+            expected_return_type: str = None,
+            expected_param_type: str = None,
     ):
         """
         handles expression context, checks type consistency of expression.
@@ -53,6 +50,10 @@ class Handler:
             return 'Bool'
 
         elif isinstance(ctx, stellaParser.ConstUnitContext):
+            """
+            Handles Unit context.
+            returns 'Unit' string, that represents Unit type.
+            """
             return 'Unit'
 
         elif isinstance(ctx, stellaParser.ConsListContext):
@@ -70,9 +71,6 @@ class Handler:
             else:
                 raise RuntimeError(f'in cons expression: head have type {type_of_head}, while type of tail is {type_of_tail}')
 
-        elif isinstance(ctx, stellaParser.IsZeroContext):
-            return 'Bool'
-
         elif isinstance(ctx, stellaParser.SuccContext):
             """
             handles succ expression context.
@@ -80,7 +78,7 @@ class Handler:
             raises RuntimeError otherwise.
             """
 
-            if self.handle_expr_context(ctx.n) == 'Nat':
+            if compare_types(self.handle_expr_context(ctx.n), 'Nat'):
                 return 'Nat'
             else:
                 raise RuntimeError(f'in "{ctx.getText()}": Nat expected, got {self.handle_expr_context(ctx.n)}')
@@ -97,15 +95,14 @@ class Handler:
             then_type = self.handle_expr_context(ctx.thenExpr)
             else_type = self.handle_expr_context(ctx.elseExpr)
 
-            if condition_type == 'Bool' and then_type == else_type:
+            if (condition_type == 'Bool' or condition_type == 'Panic') and then_type == else_type:
                 return then_type
             else:
                 if condition_type != 'Bool':
                     raise RuntimeError(f'in condition expression "{ctx.condition.getText()}": Bool expected, got '
                                        f'{self.handle_expr_context(ctx.condition)}')
                 else:
-                    raise RuntimeError(f'then "{ctx.thenExpr.getText()}" and else "{ctx.elseExpr.getText()}" '
-                                       f'expressions have different types, {then_type} and {else_type} respectively')
+                    return f'{then_type}+{else_type}'
 
         elif isinstance(ctx, stellaParser.VarContext):
             """
@@ -116,8 +113,9 @@ class Handler:
             if ctx.name.text in self.variables:
                 return self.variables[ctx.name.text]
             elif ctx.name.text in self.functions:
-                return f'fn({self.functions[ctx.name.text]["param_type"]})->({self.functions[ctx.name.text]["return_type"]})'
+                return f'fn({self.functions[ctx.name.text]["param_type"]})->{self.functions[ctx.name.text]["return_type"]}'
             else:
+                print(ctx.name.text)
                 return None
 
         elif isinstance(ctx, stellaParser.NatRecContext):
@@ -170,64 +168,94 @@ class Handler:
             function_name = ctx.fun.getText().split('(')[0]
 
             if function_name not in self.functions:
+                print(function_name)
                 return None
 
             if isinstance(ctx.fun, stellaParser.VarContext):
-
                 expected_type = self.functions[function_name]['param_type']
                 actual_type = self.handle_expr_context(ctx.args[0])
 
                 if compare_types(expected_type, actual_type):
                     return self.functions[function_name]['return_type']
-
                 else:
                     raise RuntimeError(f'in "{ctx.fun.getText()}" expected {expected_type}, '
                                        f'actual type is {actual_type}')
-
             else:
                 return self.handle_expr_context(ctx.args[0])
 
         elif isinstance(ctx, stellaParser.InlContext):
+            """
+            """
             return self.handle_expr_context(ctx.expr())
 
         elif isinstance(ctx, stellaParser.InrContext):
+            """
+            """
             return self.handle_expr_context(ctx.expr())
 
         elif isinstance(ctx, stellaParser.PatternVarContext):
+            """
+            """
 
             if ctx.name.text not in self.variables:
-                return None
+                self.variables[ctx.name.text] = 'Nat'
+                return 'Nat'
 
             return self.variables[ctx.name.text]
 
         elif isinstance(ctx, stellaParser.PatternTrueContext):
+            """
+            """
             return 'Bool'
 
         elif isinstance(ctx, stellaParser.PatternFalseContext):
+            """
+            """
             return 'Bool'
 
         elif isinstance(ctx, stellaParser.PatternUnitContext):
+            """
+            """
             return 'Unit'
 
         elif isinstance(ctx, stellaParser.PatternInlContext):
+            """
+            """
             return self.handle_expr_context(ctx.pattern())
 
         elif isinstance(ctx, stellaParser.PatternInrContext):
+            """
+            """
             return self.handle_expr_context(ctx.pattern())
 
         elif isinstance(ctx, stellaParser.MatchContext):
 
-            match_types = []
+            match_text = ctx.getText()
+            match_text = match_text[:match_text.find('(')][:match_text.find('{')].replace('match', '')
 
-            for case in ctx.cases:
+            match_type = self.functions[match_text]['return_type']
+            left_type = match_type.split('+')[0]
+            right_type = match_type.split('+')[1]
 
-                pattern = self.handle_expr_context(case.pattern())
+            self.variables.update({
+                ctx.cases[0].expr_.getText(): left_type,
+            })
 
-                expr = self.handle_expr_context(case.expr())
+            self.variables.update({
+                ctx.cases[1].expr_.getText(): right_type,
+            })
 
-                match_types.append((pattern, expr))
+            actual_left_type = self.handle_expr_context(ctx.cases[0])
+            actual_right_type = self.handle_expr_context(ctx.cases[1])
 
-            return match_types
+            if actual_right_type == actual_left_type:
+                return actual_right_type
+            else:
+                raise RuntimeError(f'Match error, left type is {actual_left_type}, right id {actual_right_type}')
+
+        elif isinstance(ctx, stellaParser.MatchCaseContext):
+            return self.handle_expr_context(ctx.expr_)
+
 
         elif isinstance(ctx, stellaParser.ListContext):
             """
@@ -280,8 +308,91 @@ class Handler:
             """
             return 'Nat'
 
+        elif isinstance(ctx, stellaParser.LetContext):
+
+            self.variables[ctx.patternBindings[0].pat.getText()] = self.handle_expr_context(ctx.patternBindings[0].rhs)
+            return self.handle_expr_context(ctx.body)
+
+        elif isinstance(ctx, stellaParser.AddContext):
+
+            left_type = self.handle_expr_context(ctx.left)
+            right_type = self.handle_expr_context(ctx.right)
+
+            if left_type == 'Nat' and right_type == 'Nat':
+                return 'Nat'
+            else:
+                raise RuntimeError(f'can not perform an arithmetical operation between {left_type} and {right_type} in '
+                                   f'{ctx.getText()}')
+
+        elif isinstance(ctx, stellaParser.MultiplyContext):
+
+            left_type = self.handle_expr_context(ctx.left)
+            right_type = self.handle_expr_context(ctx.right)
+
+            if left_type == 'Nat' and right_type == 'Nat':
+                return 'Nat'
+            else:
+                raise RuntimeError(f'can not perform an arithmetical operation between {left_type} and {right_type} in '
+                                   f'{ctx.getText()}')
+
+        elif isinstance(ctx, stellaParser.DivideContext):
+
+            left_type = self.handle_expr_context(ctx.left)
+            right_type = self.handle_expr_context(ctx.right)
+
+            if left_type == 'Nat' and right_type == 'Nat':
+                return 'Nat'
+            else:
+                raise RuntimeError(f'can not perform an arithmetical operation between {left_type} and {right_type} in '
+                                   f'{ctx.getText()}')
+
+        elif isinstance(ctx, stellaParser.EqualContext):
+
+            return 'Bool'
+
+        elif isinstance(ctx, stellaParser.AssignContext):
+            self.handle_expr_context(ctx.lhs)
+            self.handle_expr_context(ctx.rhs)
+            return 'Unit'
+
+        elif isinstance(ctx, stellaParser.RefContext):
+            return f'&{self.handle_expr_context(ctx.expr())}'
+
+        elif isinstance(ctx, stellaParser.DerefContext):
+
+            actual_type = self.handle_expr_context(ctx.expr())
+
+            if actual_type[0] == '&':
+                return actual_type.replace('&', '')
+            else:
+                raise RuntimeError(f"cannot dereference an expression {ctx.expr().getText()} of type {actual_type}")
+
+        elif isinstance(ctx, stellaParser.ParenthesisedExprContext):
+            return self.handle_expr_context(ctx.expr())
+
         elif isinstance(ctx, stellaParser.SequenceContext):
             return self.handle_expr_context(ctx.expr1)
+
+        elif isinstance(ctx, stellaParser.PanicContext):
+            # print(ctx.PANIC().getText())
+            return 'Panic'
+
+        elif isinstance(ctx, stellaParser.BindingContext):
+            return f'{ctx.name.text}:{self.handle_expr_context(ctx.rhs)}'
+
+        elif isinstance(ctx, stellaParser.RecordContext):
+
+            actual_type = ""
+
+            for binding in ctx.bindings:
+                actual_type += self.handle_expr_context(binding) + ','
+
+            actual_type = '{' + actual_type[:-1] + '}'
+
+            return actual_type
+
+        elif isinstance(ctx, stellaParser.DotRecordContext):
+            return self.variables[ctx.getText().split('.')[0]][ctx.label.text]
 
         else:
             print(type(ctx))
@@ -296,78 +407,63 @@ class Handler:
 
         if isinstance(ctx, stellaParser.DeclFunContext):
 
-            """
-            handles declaration context, checks type consistency of declaration and its return expression.
-            passes: stellaParser.DeclContext instance.
-            returns nothing if typecheck is successfully passed, raises corresponding log message otherwise.
-            """
+            local_params = {
+                param.name.text: param.paramType.getText()
+                for param in ctx.paramDecls
+            }
 
-            if isinstance(ctx, stellaParser.DeclFunContext):
+            local_type = None
 
-                local_params = {
-                    param.name.text: param.paramType.getText()
-                    for param in ctx.paramDecls
-                }
+            for param in local_params:
+                local_type = local_params[param]
 
-                local_type = None
+            # if local_type[0] == '{':
+            #
+            #     record_type = {}
+            #
+            #     for param_type in local_type.replace('{', '').replace('}', '').split(','):
+            #         print(param_type)
+            #         record_type.update({
+            #             param_type.split(':')[0]: param_type.split(':')[1]
+            #         })
+            #
+            #     for param in local_params:
+            #         self.variables.update({param: record_type})
+
+            if local_type[:2] == 'fn':
 
                 for param in local_params:
-                    local_type = local_params[param]
 
-                if local_type[0] == '{':
+                    self.functions.update({
+                        param: {
+                            'param_type': local_type.split('->')[0].replace('fn', '').replace('(', '').replace(')', ''),
+                            'return_type': local_type.split('->')[1],
+                        }
+                    })
 
-                    record_type = {}
+            else:
+                self.variables.update(local_params)
 
-                    for param_type in local_type.replace('{', '').replace('}', '').split(','):
-                        record_type.update({param_type.split(':')[0]: param_type.split(':')[1]})
+            expected_return_type = ctx.returnType.getText()
 
-                    for param in local_params:
-                        self.variables.update({param: record_type})
-
-                elif local_type[:2] == 'fn':
-
-                    for param in local_params:
-                        self.functions.update({
-                            param: {
-                                'param_type': local_type.split('->')[0].replace('fn', '').replace('(', '').replace(')',
-                                                                                                                   ''),
-                                'return_type': local_type.split('->')[1],
-                            }
-                        })
-
-                else:
-                    self.variables.update(local_params)
-
-                expected_return_type = ctx.returnType.getText()
-
-                self.functions.update({
-                    ctx.name.text: {
-                        'param_type': local_type,
-                        'return_type': expected_return_type,
-                    }
-                })
+            self.functions.update({
+                ctx.name.text: {
+                    'param_type': local_type,
+                    'return_type': expected_return_type,
+                }
+            })
 
             if isinstance(ctx.returnExpr, stellaParser.ExprContext):
 
                 try:
-                    return_type = self.handle_expr_context(ctx.returnExpr)
 
-                    if isinstance(ctx.returnExpr, stellaParser.MatchContext):
+                    return_type = self.handle_expr_context(
+                        ctx.returnExpr,
+                        expected_return_type=expected_return_type,
+                        expected_param_type=local_type,
+                    )
 
-                        expected_types = [ex_type.replace('(', '').replace(')', '').replace(' ', '')
-                              for ex_type in expected_return_type.split('+')]
-
-                        local_types = [loc_type.replace('(', '').replace(')', '').replace(' ', '')
-                              for loc_type in local_type.split('+')]
-
-                        for ret_type in return_type:
-                            if (ret_type[0] is None or ret_type[0] in local_types) or (
-                                    ret_type[1] is None or ret_type[1] in expected_types):
-                                continue
-                            else:
-                                raise RuntimeError('aboba')
-
-                    elif isinstance(ctx.returnExpr, stellaParser.ApplicationContext):
+                    if isinstance(ctx.returnExpr, stellaParser.ApplicationContext):
 
                         declaration_name = ctx.name.text
                         application_name = ctx.returnExpr.getText().split('(')[0]
@@ -391,9 +487,6 @@ class Handler:
                         declaration_name = ctx.name.text
                         declaration_return_type = self.functions[declaration_name]['return_type']
 
-                        # print(ctx.returnExpr.paramDecls[0].paramType.getText())
-                        # print(self.handle_expr_context(ctx.returnExpr))
-
                         if not compare_types(declaration_return_type, return_type):
                             raise RuntimeError(f'declaration return type is {declaration_return_type}, while '
                                                f'abstraction return type is {return_type}')
@@ -406,10 +499,10 @@ class Handler:
                     print(f'[TYPE ERROR] "{ctx.name.text}": {error}')
 
         elif isinstance(ctx, stellaParser.DeclTypeAliasContext):
-            raise RuntimeError("\t\tunsupported syntax")
+            raise RuntimeError("unsupported syntax")
 
         else:
-            raise RuntimeError("\t\tunsupported syntax")
+            raise RuntimeError("unsupported syntax")
 
     def handle_program_context(self, ctx: stellaParser.ProgramContext):
         """
@@ -417,23 +510,25 @@ class Handler:
         passes: stellaParser.ProgramContext instance.
         """
 
-        for decl in ctx.decls:
-            self.handle_decl_context(decl)
+        for declaration in ctx.decls:
+            self.handle_decl_context(declaration)
 
 
 def main():
 
-    import os
     from os import listdir
     from os.path import isfile, join
 
     well_path = 'C:\\Users\phili\PycharmProjects\\advanced_compiler\\tests\\core\\well-typed'
     ill_path = 'C:\\Users\phili\PycharmProjects\\advanced_compiler\\tests\\core\\ill-typed'
 
-    well_files = [f'{well_path}\\{f}' for f in listdir(well_path) if isfile(join(well_path, f))]
-    ill_files = [f'{ill_path}\\applying-non-function-1.stella']
+    # well_files = [f'{well_path}\\{f}' for f in listdir(well_path) if isfile(join(well_path, f))]
+    ill_files = [f'{ill_path}\\{f}' for f in listdir(ill_path) if isfile(join(ill_path, f))]
 
-    for file in well_files + ill_files:
+    # files = ill_files
+    files = ['C:\\Users\\phili\\PycharmProjects\\advanced_compiler\\tests\\core\\well-typed\\factorial.stella']
+
+    for file in files:
 
         print(f'---------------{file.replace(well_path, "").replace(ill_path, "")}---------------')
 
@@ -444,8 +539,11 @@ def main():
         parser = stellaParser(stream)
 
         program = parser.program()
-        handler = Handler()
-        handler.handle_program_context(program)
+        handler = Handler(
+        )
+        handler.handle_program_context(
+            ctx=program,
+        )
 
 
 if __name__ == '__main__':
