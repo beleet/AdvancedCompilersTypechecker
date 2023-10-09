@@ -545,7 +545,7 @@ def main():
     ill_files = [f'{ill_path}\\{f}' for f in listdir(ill_path) if isfile(join(ill_path, f))]
 
     # files = ill_files
-    files = ['C:\\Users\\phili\\PycharmProjects\\advanced_compiler\\tests\\sum-types\\well-typed\\sum-types-2.stella']
+    files = ['C:\\Users\\phili\\PycharmProjects\\advanced_compiler\\tests\\core\\well-typed\\simple-test.stella']
 
     for file in files:
 
