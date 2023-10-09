@@ -115,7 +115,6 @@ class Handler:
             elif ctx.name.text in self.functions:
                 return f'fn({self.functions[ctx.name.text]["param_type"]})->{self.functions[ctx.name.text]["return_type"]}'
             else:
-                print(ctx.name.text)
                 return None
 
         elif isinstance(ctx, stellaParser.NatRecContext):
@@ -233,16 +232,38 @@ class Handler:
             match_text = ctx.getText()
             match_text = match_text[:match_text.find('(')][:match_text.find('{')].replace('match', '')
 
-            match_type = self.functions[match_text]['return_type']
+            try:
+                match_type = self.functions[match_text]['return_type']
+            except KeyError:
+                match_type = self.variables[match_text]
+
             left_type = match_type.split('+')[0]
-            right_type = match_type.split('+')[1]
+            right_type = match_type[len(left_type) + 1:]
+
+            if left_type[0] == '(':
+                left_type = left_type[1:]
+            if left_type[-1:] == ')':
+                left_type = left_type[:-1]
+
+            if right_type[0] == '(':
+                right_type = right_type[1:]
+            if right_type[-1:] == ')':
+                right_type = right_type[:-1]
 
             self.variables.update({
-                ctx.cases[0].expr_.getText(): left_type,
+                ctx.cases[0].pattern_.pattern_.getText(): left_type,
             })
 
             self.variables.update({
-                ctx.cases[1].expr_.getText(): right_type,
+                ctx.cases[1].pattern_.pattern_.getText(): right_type,
+            })
+
+            self.functions.update({
+                ctx.cases[0].pattern_.pattern_.getText(): {'param_type': left_type}
+            })
+
+            self.functions.update({
+                ctx.cases[1].pattern_.pattern_.getText(): {'param_type': right_type}
             })
 
             actual_left_type = self.handle_expr_context(ctx.cases[0])
@@ -251,11 +272,10 @@ class Handler:
             if actual_right_type == actual_left_type:
                 return actual_right_type
             else:
-                raise RuntimeError(f'Match error, left type is {actual_left_type}, right id {actual_right_type}')
+                raise RuntimeError(f'Match error, left type is {actual_left_type}, right is {actual_right_type}')
 
         elif isinstance(ctx, stellaParser.MatchCaseContext):
             return self.handle_expr_context(ctx.expr_)
-
 
         elif isinstance(ctx, stellaParser.ListContext):
             """
@@ -395,7 +415,6 @@ class Handler:
             return self.variables[ctx.getText().split('.')[0]][ctx.label.text]
 
         else:
-            print(type(ctx))
             raise RuntimeError("unsupported syntax")
 
     def handle_decl_context(self, ctx: stellaParser.DeclContext):
@@ -526,7 +545,7 @@ def main():
     ill_files = [f'{ill_path}\\{f}' for f in listdir(ill_path) if isfile(join(ill_path, f))]
 
     # files = ill_files
-    files = ['C:\\Users\\phili\\PycharmProjects\\advanced_compiler\\tests\\core\\well-typed\\factorial.stella']
+    files = ['C:\\Users\\phili\\PycharmProjects\\advanced_compiler\\tests\\sum-types\\well-typed\\sum-types-2.stella']
 
     for file in files:
 

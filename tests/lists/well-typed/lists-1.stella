@@ -8,5 +8,5 @@ fn length(list : [Nat]) -> Nat {
 }
 
 fn main(n : Nat) -> Nat {
-  return length([n, n, n, n, n])
+  return length([n])
 }
